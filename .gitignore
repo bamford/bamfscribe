@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Model cache
+.cache/
+models/
+
+# Transcripts (if storing in tool directory)
+transcripts/
+*.srt
+*.json
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Credentials
+.env
+*.token
+
+# Local configuration
+config.py
+
+# Speaker database (contains personal voice profiles)
+.speaker_profiles.json

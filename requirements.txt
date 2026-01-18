@@ -1,0 +1,25 @@
+# Voice Memo Transcription Requirements
+
+# Core ML dependencies
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Transcription backends (install at least one)
+# Option 1: Parakeet-MLX (faster, recommended for Apple Silicon)
+parakeet-mlx>=0.1.0
+
+# Option 2: MLX-Whisper (OpenAI Whisper optimized for Apple Silicon)
+mlx-whisper>=0.3.0
+
+# Speaker diarization
+pyannote.audio>=3.1.0
+# Note: Requires accepting terms at https://huggingface.co/pyannote/speaker-diarization
+# and setting HF_TOKEN environment variable
+
+# Audio processing
+soundfile>=0.12.0
+librosa>=0.10.0
+
+# Utilities
+numpy>=1.24.0
+scikit-learn>=1.3.0  # For speaker recognition (cosine similarity)
