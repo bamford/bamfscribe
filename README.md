@@ -347,7 +347,7 @@ Please create a summary of the transcription at: /path/to/transcript.srt
 ```
 
 Cursor then:
-- Uses `cursor-agent` (or `agent`) with `--force`, `--stream-partial-output`, and `--workspace` flags
+- Uses `cursor-agent` (or `agent`) with `--force` and `--workspace` flags
 - Reads the transcript file
 - Generates a summary based on your cursor rules (if configured)
 - Can save the summary to your notes folder (if rules specify)

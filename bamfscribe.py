@@ -793,7 +793,7 @@ class VoiceMemoTranscriber:
                 raise FileNotFoundError("Neither 'cursor-agent' nor 'agent' command found")
             
             # Build command with flags
-            cmd = [cursor_cmd, "--force", "--stream-partial-output"]
+            cmd = [cursor_cmd, "--force"]
             
             # Add workspace path if provided
             if workspace_path:
