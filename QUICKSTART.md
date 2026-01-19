@@ -3,11 +3,15 @@
 ## First Time Setup
 
 ```bash
-# 1. Install dependencies
+# 1. Install FFmpeg (strongly recommended for parakeet-mlx)
+conda install -c conda-forge ffmpeg  # if using conda
+# OR: brew install ffmpeg  # if using Homebrew
+
+# 2. Install Python dependencies
 cd ~/repos/tools/bamfscribe
 ./setup.sh
 
-# 2. Set up Hugging Face token (required for speaker diarization)
+# 3. Set up Hugging Face token (required for speaker diarization)
 # First, accept terms at these URLs:
 # - https://huggingface.co/pyannote/speaker-diarization-community-1 (primary model)
 # - https://huggingface.co/pyannote/segmentation-3.0
@@ -15,10 +19,10 @@ cd ~/repos/tools/bamfscribe
 export HF_TOKEN='your_token_here'
 echo "export HF_TOKEN='your_token_here'" >> ~/.zshrc
 
-# 3. Grant Full Disk Access (if prompted)
+# 4. Grant Full Disk Access (if prompted)
 # System Settings → Privacy & Security → Full Disk Access → Add Terminal
 
-# 4. Install Cursor CLI (optional, for automatic summaries)
+# 5. Install Cursor CLI (optional, for automatic summaries)
 curl https://cursor.com/install -fsS | bash
 # Get API key from: https://cursor.com/dashboard?tab=cloud-agents
 export CURSOR_API_KEY='your_api_key_here'

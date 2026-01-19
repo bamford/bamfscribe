@@ -70,12 +70,28 @@ Automatically transcribe voice memos and meeting recordings with speaker identif
 
 1. Python 3.12 or higher
 2. Apple Silicon Mac (for optimal performance)
-3. Hugging Face account (for speaker diarization)
-4. Cursor CLI and API key (optional, for automatic summary generation)
+3. **FFmpeg** (strongly recommended - required for parakeet-mlx and accurate audio file handling)
+4. Hugging Face account (for speaker diarization)
+5. Cursor CLI and API key (optional, for automatic summary generation)
 
 ### Setup
 
-1. **Install dependencies:**
+1. **Install FFmpeg** (strongly recommended):
+
+```bash
+# Using conda (if in a conda environment):
+conda install -c conda-forge ffmpeg
+
+# OR using Homebrew (system-wide):
+brew install ffmpeg
+```
+
+**Important**: FFmpeg is strongly advised for parakeet-mlx (the default transcription backend) and ensures accurate audio file handling. Without it:
+- Parakeet-mlx may have issues loading audio files
+- Duration detection will be inaccurate (showing wrong times in the selection menu)
+- Some audio formats may not work properly
+
+2. **Install Python dependencies:**
 
 ```bash
 cd ~/repos/tools/bamfscribe
@@ -84,7 +100,7 @@ pip install -r requirements.txt
 # Note: Includes scikit-learn for speaker recognition
 ```
 
-2. **Set up Hugging Face token for speaker diarization:**
+3. **Set up Hugging Face token for speaker diarization:**
 
    a. Create account at [https://huggingface.co](https://huggingface.co)
    
@@ -101,12 +117,12 @@ pip install -r requirements.txt
    echo "export HF_TOKEN='your_token_here'" >> ~/.zshrc
    ```
 
-3. **Grant Full Disk Access** (required to read Voice Memos):
+4. **Grant Full Disk Access** (required to read Voice Memos):
 
    - System Settings → Privacy & Security → Full Disk Access
    - Add Terminal or your Python interpreter
 
-4. **Install Cursor CLI** (optional, for automatic summary generation):
+5. **Install Cursor CLI** (optional, for automatic summary generation):
 
    a. Install using the official installer:
    ```bash

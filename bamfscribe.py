@@ -117,19 +117,38 @@ class VoiceMemoTranscriber:
         Returns:
             Duration in seconds, or None if unable to determine
         """
+        # Try ffprobe first (most reliable for m4a/mp4 containers)
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', 
+                 '-of', 'default=noprint_wrappers=1:nokey=1', str(audio_file)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                duration = float(result.stdout.strip())
+                return duration
+        except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+            pass  # ffprobe not available or failed
+        
+        # Fallback to soundfile (works for wav, flac, etc.)
         try:
             import soundfile as sf
             with sf.SoundFile(str(audio_file)) as f:
                 duration = len(f) / f.samplerate
                 return duration
         except Exception:
-            # Fallback: estimate from file size (very rough)
-            # ~1MB per minute for voice memo quality
-            try:
-                size_mb = audio_file.stat().st_size / (1024 * 1024)
-                return size_mb * 60  # rough estimate
-            except Exception:
-                return None
+            pass
+        
+        # Last resort: estimate from file size (very rough)
+        # ~1MB per minute for voice memo quality
+        try:
+            size_mb = audio_file.stat().st_size / (1024 * 1024)
+            return size_mb * 60  # rough estimate
+        except Exception:
+            return None
     
     def list_voice_memos(self, limit=10):
         """

@@ -32,7 +32,12 @@ python test_installation.py
 
 echo
 echo "Next steps:"
-echo "1. Set up Hugging Face token for speaker diarization:"
+echo "1. Install FFmpeg (strongly recommended for parakeet-mlx):"
+echo "   conda install -c conda-forge ffmpeg   # if using conda"
+echo "   # OR: brew install ffmpeg             # if using Homebrew"
+echo "   Note: Required for proper audio loading and accurate duration detection"
+echo
+echo "2. Set up Hugging Face token for speaker diarization:"
 echo "   - Accept terms at these URLs:"
 echo "     * https://huggingface.co/pyannote/speaker-diarization-community-1 (primary - fastest)"
 echo "     * https://huggingface.co/pyannote/segmentation-3.0"
@@ -40,21 +45,21 @@ echo "   - Get your token from: https://huggingface.co/settings/tokens"
 echo "   - Run: export HF_TOKEN='your_token_here'"
 echo "   - Add to ~/.zshrc to make permanent"
 echo
-echo "2. Grant Full Disk Access (if needed):"
+echo "3. Grant Full Disk Access (if needed):"
 echo "   - System Settings → Privacy & Security → Full Disk Access"
 echo "   - Add Terminal or Python"
 echo
-echo "3. (Optional) Install Cursor CLI for automatic summaries:"
+echo "4. (Optional) Install Cursor CLI for automatic summaries:"
 echo "   - Install: curl https://cursor.com/install -fsS | bash"
 echo "   - Get API key from: https://cursor.com/dashboard?tab=cloud-agents"
 echo "   - Run: export CURSOR_API_KEY='your_api_key_here'"
 echo "   - Add to ~/.zshrc to make permanent"
 echo "   - Verify: agent --version"
 echo
-echo "4. (Optional) Set your preferences:"
+echo "5. (Optional) Set your preferences:"
 echo "   cp config.example.py config.py"
 echo "   # Edit config.py with your workspace path and preferences"
 echo
-echo "5. Run the tool:"
+echo "6. Run the tool:"
 echo "   python bamfscribe.py"
 echo
