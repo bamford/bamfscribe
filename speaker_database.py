@@ -154,7 +154,8 @@ class SpeakerDatabase:
         recording_name: str = "",
         speaker_quotes: Dict[str, List[str]] = None,
         time_tracker: callable = None,
-        audio_segments: Dict[str, Tuple[float, float]] = None
+        audio_segments: Dict[str, Tuple[float, float]] = None,
+        confidence_threshold: float = 0.95
     ) -> Dict[str, str]:
         """
         Interactively prompt user to name unknown speakers.
@@ -167,6 +168,7 @@ class SpeakerDatabase:
             speaker_quotes: Dictionary mapping speaker_label -> list of sample quotes
             time_tracker: Optional callback to track user interaction time
             audio_segments: Dictionary mapping speaker_label -> list of (start, end) tuples
+            confidence_threshold: Only prompt for confirmation if confidence < threshold (default: 0.95)
         
         Returns:
             Dictionary mapping speaker_label -> final_name
@@ -249,66 +251,74 @@ class SpeakerDatabase:
                 # Confirmed match
                 print(f"  Identified as '{identified_name}' ({confidence:.2%} confidence)")
                 
-                # Track time spent waiting for user input
-                input_start = time.time() if time_tracker else None
-                prompt = f"  Confirm (y), rename (n), skip (s)"
-                options = "y/n/s"
-                if len(quotes) > 1:
-                    prompt += f", more quotes (m)"
-                    options += "/m"
-                if audio_segments and label in audio_segments:
-                    prompt += f", play audio (p)"
-                    options += "/p"
-                prompt += f"? [{options}]: "
-                response = input(prompt).strip().lower()
-                if time_tracker and input_start:
-                    time_tracker(time.time() - input_start)
-                
-                # Keep handling commands until we get a decision
-                while True:
-                    # Handle "play audio" request
-                    if response == 'p':
-                        play_speaker_audio(label)
-                        input_start = time.time() if time_tracker else None
-                        response = input(prompt).strip().lower()
-                        if time_tracker and input_start:
-                            time_tracker(time.time() - input_start)
-                        continue
-                    
-                    # Handle "more quotes" request
-                    if response == 'm' and len(quotes) > 1:
-                        print(f"\n  Additional quotes from {label}:")
-                        for idx, q in enumerate(quotes[1:], 2):
-                            display_q = q[:77] + "..." if len(q) > 80 else q
-                            print(f"    {idx}. \"{display_q}\"")
-                        
-                        input_start = time.time() if time_tracker else None
-                        response = input(prompt).strip().lower()
-                        if time_tracker and input_start:
-                            time_tracker(time.time() - input_start)
-                        continue
-                    
-                    # Not a command, break out to handle decision
-                    break
-                
-                if response == 'n':
-                    # User wants to rename
-                    input_start = time.time() if time_tracker else None
-                    new_name = input(f"  Enter correct name: ").strip()
-                    if time_tracker and input_start:
-                        time_tracker(time.time() - input_start)
-                    if new_name:
-                        final_names[label] = new_name
-                        # Add/update with correct name
-                        self.add_speaker(new_name, embeddings[i], recording_name)
-                elif response == 's':
-                    # Skip - keep original label
-                    final_names[label] = label
-                else:
-                    # Confirmed
+                # Auto-confirm if confidence is above threshold
+                if confidence >= confidence_threshold:
+                    print(f"  Auto-confirmed (confidence >= {confidence_threshold:.0%})")
                     final_names[label] = identified_name
                     # Update the profile
                     self.add_speaker(identified_name, embeddings[i], recording_name)
+                else:
+                    # Confidence below threshold - prompt for confirmation
+                    # Track time spent waiting for user input
+                    input_start = time.time() if time_tracker else None
+                    prompt = f"  Confirm (y), rename (n), skip (s)"
+                    options = "y/n/s"
+                    if len(quotes) > 1:
+                        prompt += f", more quotes (m)"
+                        options += "/m"
+                    if audio_segments and label in audio_segments:
+                        prompt += f", play audio (p)"
+                        options += "/p"
+                    prompt += f"? [{options}]: "
+                    response = input(prompt).strip().lower()
+                    if time_tracker and input_start:
+                        time_tracker(time.time() - input_start)
+                    
+                    # Keep handling commands until we get a decision
+                    while True:
+                        # Handle "play audio" request
+                        if response == 'p':
+                            play_speaker_audio(label)
+                            input_start = time.time() if time_tracker else None
+                            response = input(prompt).strip().lower()
+                            if time_tracker and input_start:
+                                time_tracker(time.time() - input_start)
+                            continue
+                        
+                        # Handle "more quotes" request
+                        if response == 'm' and len(quotes) > 1:
+                            print(f"\n  Additional quotes from {label}:")
+                            for idx, q in enumerate(quotes[1:], 2):
+                                display_q = q[:77] + "..." if len(q) > 80 else q
+                                print(f"    {idx}. \"{display_q}\"")
+                            
+                            input_start = time.time() if time_tracker else None
+                            response = input(prompt).strip().lower()
+                            if time_tracker and input_start:
+                                time_tracker(time.time() - input_start)
+                            continue
+                        
+                        # Not a command, break out to handle decision
+                        break
+                    
+                    if response == 'n':
+                        # User wants to rename
+                        input_start = time.time() if time_tracker else None
+                        new_name = input(f"  Enter correct name: ").strip()
+                        if time_tracker and input_start:
+                            time_tracker(time.time() - input_start)
+                        if new_name:
+                            final_names[label] = new_name
+                            # Add/update with correct name
+                            self.add_speaker(new_name, embeddings[i], recording_name)
+                    elif response == 's':
+                        # Skip - keep original label
+                        final_names[label] = label
+                    else:
+                        # Confirmed
+                        final_names[label] = identified_name
+                        # Update the profile
+                        self.add_speaker(identified_name, embeddings[i], recording_name)
             else:
                 # New/unknown speaker
                 print(f"  Unknown speaker detected")
