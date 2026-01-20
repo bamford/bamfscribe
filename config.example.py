@@ -26,3 +26,8 @@ CURSOR_WORKSPACE_PATH = None
 
 # Whether to generate summary by default
 GENERATE_SUMMARY = True
+
+# Speaker confidence threshold (0.0-1.0)
+# Only prompt for speaker confirmation if confidence < threshold
+# Default: 0.95 (95%) - speakers with 95%+ confidence are auto-confirmed
+SPEAKER_CONFIDENCE_THRESHOLD = 0.95

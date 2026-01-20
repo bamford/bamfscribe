@@ -69,7 +69,8 @@ class VoiceMemoTranscriber:
     }
     
     def __init__(self, voice_memos_dir=None, output_dir=None, 
-                 backend="parakeet", model_size="medium", use_speaker_db=True, num_speakers=None):
+                 backend="parakeet", model_size="medium", use_speaker_db=True, num_speakers=None,
+                 speaker_confidence_threshold=0.95):
         """
         Initialize the transcriber.
         
@@ -80,6 +81,7 @@ class VoiceMemoTranscriber:
             model_size: Model size (tiny/base/small/medium/large/large-v3/large-v3-turbo)
             use_speaker_db: Enable speaker recognition database
             num_speakers: Number of speakers (if known, speeds up diarization significantly)
+            speaker_confidence_threshold: Only prompt for confirmation if confidence < threshold (default: 0.95)
         """
         if voice_memos_dir is None:
             voice_memos_dir = Path.home() / "Library/Group Containers/group.com.apple.voicememos.shared/Recordings"
@@ -94,6 +96,7 @@ class VoiceMemoTranscriber:
         self.model_size = model_size.lower()
         self.use_speaker_db = use_speaker_db
         self.num_speakers = num_speakers
+        self.speaker_confidence_threshold = speaker_confidence_threshold
         self.speaker_db = None  # Loaded lazily when needed
         
         # Validate backend
@@ -690,7 +693,8 @@ class VoiceMemoTranscriber:
                 audio_filename,
                 speaker_quotes,
                 time_tracker=track_interaction_time,
-                audio_segments=speaker_audio_segments
+                audio_segments=speaker_audio_segments,
+                confidence_threshold=self.speaker_confidence_threshold
             )
         else:
             # No speaker recognition - use original labels
@@ -1013,7 +1017,8 @@ def main():
         "VOICE_MEMOS_DIR": None,
         "OUTPUT_DIR": None,
         "CURSOR_WORKSPACE_PATH": None,
-        "GENERATE_SUMMARY": True
+        "GENERATE_SUMMARY": True,
+        "SPEAKER_CONFIDENCE_THRESHOLD": 0.95
     }
     
     try:
@@ -1099,6 +1104,12 @@ Examples:
         type=int,
         help="Number of speakers in recording (speeds up diarization significantly if known)"
     )
+    parser.add_argument(
+        "--speaker-confidence-threshold",
+        type=float,
+        default=config_defaults.get("SPEAKER_CONFIDENCE_THRESHOLD", 0.95),
+        help="Only prompt for speaker confirmation if confidence < threshold (default: 0.95)"
+    )
     
     args = parser.parse_args()
     
@@ -1112,7 +1123,8 @@ Examples:
         backend=args.backend,
         model_size=args.model,
         use_speaker_db=not args.no_speaker_db,
-        num_speakers=args.num_speakers
+        num_speakers=args.num_speakers,
+        speaker_confidence_threshold=args.speaker_confidence_threshold
     )
     
     # Process
