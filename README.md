@@ -157,7 +157,12 @@ pip install -r requirements.txt
 python bamfscribe.py
 ```
 
-Shows a list of your last 10 voice memos with dates, times, and durations. You select which one to process.
+Shows a list of voice memos from the past 7 days (by default) with dates, times, and durations. Recordings that already have transcripts are marked with ✓. You select which one to process.
+
+To see recordings from further back, use `--ndays`:
+```bash
+python bamfscribe.py --ndays 30  # Show recordings from past 30 days
+```
 
 After selection, you'll be prompted for the number of speakers (optional, but significantly speeds up diarization):
 ```
@@ -170,7 +175,38 @@ How many speakers? (press Enter to skip): 2
 python bamfscribe.py --latest
 ```
 
-Automatically processes the most recent memo without prompting (skips both file selection and speaker count).
+Automatically processes the most recent memo without prompting (skips both file selection and speaker count). If a transcript already exists, it will skip processing unless you use `--force`.
+
+**Force overwrite existing transcripts:**
+
+```bash
+python bamfscribe.py --latest --force
+```
+
+Re-processes the latest memo even if a transcript already exists. Useful if you want to update an existing transcript with better settings or after improving speaker recognition.
+
+**Automatic mode (for cron jobs):**
+
+```bash
+python bamfscribe.py --auto
+```
+
+Finds the oldest voice memo from the past 7 days (by default) that hasn't been transcribed yet and processes it automatically. This is designed for unattended operation in cron jobs:
+- Searches for unprocessed recordings from the last `--ndays` days (default: 7)
+- Processes the oldest unprocessed one (chronological order)
+- Exits silently if all recordings are already transcribed
+- Never overwrites existing transcripts
+- No user interaction required (skips all prompts including speaker count)
+
+To search further back, use `--ndays`:
+```bash
+python bamfscribe.py --auto --ndays 14  # Process from past 2 weeks
+```
+
+Example cron job (process every hour):
+```bash
+0 * * * * cd /path/to/bamfscribe && /path/to/python bamfscribe.py --auto >> /tmp/bamfscribe.log 2>&1
+```
 
 **Process a specific audio file:**
 
@@ -182,23 +218,28 @@ Process any audio file (not just Voice Memos). Supports `.m4a`, `.mp4`, `.m4v`, 
 
 **Processing flow:**
 1. Choose input:
-   - Interactive: List and select from last 10 Voice Memos
+   - Interactive: List and select from Voice Memos (past `--ndays` days, default 7)
    - Auto-select: `--latest` for most recent Voice Memo
+   - Automatic: `--auto` for oldest unprocessed memo from past `--ndays` days
    - Direct file: `--file path/to/audio.m4a` for any audio file
-2. Optionally specify number of speakers (speeds up diarization)
-3. Transcribe with parakeet-mlx
+2. Check if transcript already exists:
+   - Interactive mode: Prompts to confirm overwrite
+   - `--latest` mode: Skips unless `--force` is used
+   - `--auto` mode: Always skips existing transcripts
+3. Optionally specify number of speakers (speeds up diarization)
+4. Transcribe with parakeet-mlx
    - Shows chunk progress for long recordings (>20 min)
    - Timing information displayed
-4. Identify speakers with pyannote
+5. Identify speakers with pyannote
    - Real-time progress bars
    - Timing information displayed
-5. **Match speakers to known profiles** with:
+6. **Match speakers to known profiles** with:
    - Sample quotes from each speaker (up to 5 per speaker)
    - Audio playback - press 'p' to hear their voice (up to 3 clips per speaker)
    - Press 'm' for more quotes, press 'p' multiple times for different audio samples
-6. Save SRT and JSON transcripts with speaker names
-7. Generate meeting summary with Cursor (optional)
-8. Display timing summary for all steps
+7. Save SRT and JSON transcripts with speaker names
+8. Generate meeting summary with Cursor (optional)
+9. Display timing summary for all steps
 
 See [SPEAKER_DATABASE.md](./SPEAKER_DATABASE.md) for details on speaker recognition features.
 
@@ -250,6 +291,18 @@ python bamfscribe.py --backend parakeet --model medium
 # Auto-select latest without prompt
 python bamfscribe.py --latest
 
+# Force re-process latest even if transcript exists
+python bamfscribe.py --latest --force
+
+# Automatic mode: process oldest unprocessed memo (for cron jobs)
+python bamfscribe.py --auto
+
+# Show recordings from past 30 days instead of 7
+python bamfscribe.py --ndays 30
+
+# Auto mode with custom time window
+python bamfscribe.py --auto --ndays 14
+
 # Process ANY audio file (not just Voice Memos)
 python bamfscribe.py --file /path/to/recording.m4a
 # Supports: .m4a, .mp4, .m4v, .caf, .wav, and other common formats
@@ -262,7 +315,6 @@ python bamfscribe.py --output-dir /path/to/transcripts --latest
 
 # Skip summary generation
 python bamfscribe.py --no-summary --latest
-
 
 # Disable speaker recognition
 python bamfscribe.py --no-speaker-db --latest

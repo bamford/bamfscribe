@@ -70,7 +70,7 @@ class VoiceMemoTranscriber:
     
     def __init__(self, voice_memos_dir=None, output_dir=None, 
                  backend="parakeet", model_size="medium", use_speaker_db=True, num_speakers=None,
-                 speaker_confidence_threshold=0.95):
+                 speaker_confidence_threshold=0.95, ndays=7):
         """
         Initialize the transcriber.
         
@@ -82,6 +82,7 @@ class VoiceMemoTranscriber:
             use_speaker_db: Enable speaker recognition database
             num_speakers: Number of speakers (if known, speeds up diarization significantly)
             speaker_confidence_threshold: Only prompt for confirmation if confidence < threshold (default: 0.95)
+            ndays: Number of days back to search for recordings (default: 7)
         """
         if voice_memos_dir is None:
             voice_memos_dir = Path.home() / "Library/Group Containers/group.com.apple.voicememos.shared/Recordings"
@@ -97,6 +98,7 @@ class VoiceMemoTranscriber:
         self.use_speaker_db = use_speaker_db
         self.num_speakers = num_speakers
         self.speaker_confidence_threshold = speaker_confidence_threshold
+        self.ndays = ndays
         self.speaker_db = None  # Loaded lazily when needed
         
         # Validate backend
@@ -153,16 +155,18 @@ class VoiceMemoTranscriber:
         except Exception:
             return None
     
-    def list_voice_memos(self, limit=10):
+    def list_voice_memos(self, limit=None):
         """
         List recent voice memos with metadata.
         
         Args:
-            limit: Maximum number of files to return
+            limit: Maximum number of files to return (None = no limit, filtered by ndays)
             
         Returns:
             List of (file_path, metadata_dict) tuples, sorted newest first
         """
+        from datetime import timedelta
+        
         # Look for common audio formats
         audio_extensions = [".m4a", ".mp4", ".m4v", ".caf"]
         audio_files = []
@@ -173,13 +177,7 @@ class VoiceMemoTranscriber:
         if not audio_files:
             return []
         
-        # Sort by modification time, newest first
-        audio_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-        
-        # Limit to requested number
-        audio_files = audio_files[:limit]
-        
-        # Get metadata for each file
+        # Get metadata for each file (including parsed date from filename)
         memos = []
         for audio_file in audio_files:
             stat = audio_file.stat()
@@ -209,6 +207,9 @@ class VoiceMemoTranscriber:
                 time_display = mod_time.strftime("%H:%M:%S")
                 parsed_time = mod_time
             
+            # Check if transcript exists
+            existing_transcript = self.transcript_exists(audio_file)
+            
             metadata = {
                 "name": audio_file.name,
                 "path": audio_file,
@@ -216,9 +217,23 @@ class VoiceMemoTranscriber:
                 "time": time_display,
                 "modified": parsed_time,
                 "duration": duration,
-                "size_mb": stat.st_size / (1024 * 1024)
+                "size_mb": stat.st_size / (1024 * 1024),
+                "has_transcript": existing_transcript is not None,
+                "transcript_path": existing_transcript
             }
             memos.append((audio_file, metadata))
+        
+        # Filter by date (ndays back) using parsed date from filename
+        from datetime import timedelta
+        cutoff_time = datetime.now() - timedelta(days=self.ndays)
+        memos = [(f, m) for f, m in memos if m['modified'] >= cutoff_time]
+        
+        # Sort by parsed date (newest first)
+        memos.sort(key=lambda x: x[1]['modified'], reverse=True)
+        
+        # Limit to requested number if specified
+        if limit is not None:
+            memos = memos[:limit]
         
         return memos
     
@@ -233,12 +248,14 @@ class VoiceMemoTranscriber:
             Path to selected voice memo file
         """
         print(f"Searching for voice memos in: {self.voice_memos_dir}")
+        print(f"  (recordings from past {self.ndays} days)")
         
-        memos = self.list_voice_memos(limit=10)
+        memos = self.list_voice_memos(limit=None)
         
         if not memos:
-            print(f"Error: No audio files found in {self.voice_memos_dir}")
+            print(f"Error: No audio files found in {self.voice_memos_dir} from the past {self.ndays} days")
             print(f"Looked for extensions: .m4a, .mp4, .m4v, .caf")
+            print(f"Use --ndays to search further back (e.g., --ndays 30)")
             sys.exit(1)
         
         if auto_select_latest:
@@ -253,15 +270,18 @@ class VoiceMemoTranscriber:
         
         # Display list
         print("\n" + "=" * 80)
-        print("Recent Voice Memos:")
+        print(f"Voice Memos (past {self.ndays} days):")
         print("=" * 80)
         
         for i, (file_path, metadata) in enumerate(memos, 1):
             duration_str = self._format_duration(metadata['duration']) if metadata['duration'] else "unknown"
+            transcript_indicator = " ✓" if metadata['has_transcript'] else ""
             
-            print(f"{i:2d}. {metadata['date']} {metadata['time']}  [{duration_str:>8s}]")
+            print(f"{i:2d}. {metadata['date']} {metadata['time']}  [{duration_str:>8s}]{transcript_indicator}")
         
         print("=" * 80)
+        if any(m[1]['has_transcript'] for m in memos):
+            print("✓ = transcript already exists")
         
         # Get user selection
         while True:
@@ -306,6 +326,87 @@ class VoiceMemoTranscriber:
             return f"{hours:d}:{minutes:02d}:{secs:02d}"
         else:
             return f"{minutes:2d}:{secs:02d}"
+    
+    def transcript_exists(self, audio_file):
+        """
+        Check if a transcript already exists for the given audio file.
+        
+        Args:
+            audio_file: Path to audio file
+            
+        Returns:
+            Path to existing transcript (SRT file) if found, None otherwise
+        """
+        audio_file = Path(audio_file)
+        base_name = audio_file.stem
+        
+        # Ensure output_dir is absolute
+        output_dir = self.output_dir
+        if not output_dir.is_absolute():
+            output_dir = Path.home() / output_dir
+        
+        # Look for any existing transcripts with this base name
+        # Pattern: basename_YYYYMMDD_HHMMSS.srt
+        existing_transcripts = list(output_dir.glob(f"{base_name}_*.srt"))
+        
+        if existing_transcripts:
+            # Return the most recent transcript
+            existing_transcripts.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+            return existing_transcripts[0]
+        
+        return None
+    
+    def find_oldest_unprocessed_memo(self):
+        """
+        Find the oldest voice memo from the past ndays that doesn't have a transcript.
+        
+        Returns:
+            Path to oldest unprocessed audio file, or None if all are processed
+        """
+        from datetime import timedelta
+        
+        # Get all memos
+        audio_extensions = [".m4a", ".mp4", ".m4v", ".caf"]
+        audio_files = []
+        
+        for ext in audio_extensions:
+            audio_files.extend(self.voice_memos_dir.glob(f"*{ext}"))
+        
+        if not audio_files:
+            return None
+        
+        # Parse dates from filenames for accurate filtering
+        files_with_dates = []
+        for audio_file in audio_files:
+            name = audio_file.stem
+            try:
+                # Try to parse timestamp from filename (format: YYYYMMDD HHMMSS-ID.ext)
+                if len(name) >= 15 and name[8] == " ":
+                    date_str = name[:8]  # YYYYMMDD
+                    time_str = name[9:15]  # HHMMSS
+                    parsed_time = datetime.strptime(f"{date_str} {time_str}", "%Y%m%d %H%M%S")
+                else:
+                    # Fallback to file modification time
+                    parsed_time = datetime.fromtimestamp(audio_file.stat().st_mtime)
+            except (ValueError, IndexError):
+                # Fallback to file modification time if parsing fails
+                parsed_time = datetime.fromtimestamp(audio_file.stat().st_mtime)
+            
+            files_with_dates.append((audio_file, parsed_time))
+        
+        # Filter to only files from the past ndays
+        cutoff_time = datetime.now() - timedelta(days=self.ndays)
+        recent_files = [(f, d) for f, d in files_with_dates if d >= cutoff_time]
+        
+        # Sort by date, oldest first
+        recent_files.sort(key=lambda x: x[1])
+        
+        # Find the first file without a transcript
+        for audio_file, _ in recent_files:
+            if self.transcript_exists(audio_file) is None:
+                return audio_file
+        
+        return None
     
     def find_latest_voice_memo(self):
         """
@@ -845,7 +946,8 @@ class VoiceMemoTranscriber:
             print(f"  Transcript: {srt_path}")
     
     def process_voice_memo(self, audio_file=None, auto_select_latest=False,
-                           generate_summary=True, workspace_path=None):
+                           generate_summary=True, workspace_path=None, force_overwrite=False,
+                           skip_prompt=False):
         """
         Main processing pipeline.
         
@@ -854,6 +956,8 @@ class VoiceMemoTranscriber:
             auto_select_latest: If True, automatically select latest memo
             generate_summary: Whether to generate a summary with Cursor
             workspace_path: Path to Cursor workspace (for --workspace flag)
+            force_overwrite: If True, process even if transcript exists (used with --latest --force)
+            skip_prompt: If True, skip prompting about existing transcripts (for --auto mode)
         """
         print(f"Configuration:")
         print(f"  Backend: {self.backend}")
@@ -882,8 +986,8 @@ class VoiceMemoTranscriber:
                 sys.exit(1)
             print(f"Processing: {audio_file.name}")
             
-            # Prompt for number of speakers if not specified
-            if self.num_speakers is None:
+            # Prompt for number of speakers if not specified (skip in auto mode)
+            if self.num_speakers is None and not skip_prompt:
                 try:
                     response = input("\nHow many speakers? (press Enter to skip): ").strip()
                     if response:
@@ -893,6 +997,33 @@ class VoiceMemoTranscriber:
                             print(f"Will optimize diarization for {num_speakers} speaker(s)")
                 except (ValueError, KeyboardInterrupt):
                     print("Skipping speaker count optimization")
+        
+        # Check if transcript already exists
+        existing_transcript = self.transcript_exists(audio_file)
+        if existing_transcript:
+            print(f"\n⚠️  Transcript already exists: {existing_transcript}")
+            
+            if skip_prompt:
+                # For --auto mode, silently skip files that already have transcripts
+                print("Skipping (already processed).")
+                return None
+            elif auto_select_latest and not force_overwrite:
+                # For --latest without --force, skip without prompting
+                print("Use --force to overwrite existing transcript.")
+                print("Skipping processing.")
+                return None
+            elif not auto_select_latest and not force_overwrite:
+                # Interactive mode: prompt user
+                try:
+                    response = input("Overwrite existing transcript? [y/N]: ").strip().lower()
+                    if response not in ['y', 'yes']:
+                        print("Skipping processing.")
+                        return None
+                    print("Proceeding with transcription...")
+                except KeyboardInterrupt:
+                    print("\n\nCancelled.")
+                    return None
+            # If force_overwrite is True, proceed without prompting
         
         # Now load heavy dependencies after user has made their selection
         print("\nLoading AI models...")
@@ -1040,11 +1171,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Interactive selection (default)
+  # Interactive selection (default - shows recordings from past 7 days)
   %(prog)s
+  
+  # Show recordings from past 30 days
+  %(prog)s --ndays 30
   
   # Auto-select latest memo without prompt
   %(prog)s --latest
+  
+  # Force re-process latest memo even if transcript exists
+  %(prog)s --latest --force
+  
+  # Automatic mode: process oldest unprocessed memo (for cron jobs)
+  %(prog)s --auto
+  
+  # Auto mode searching past 14 days
+  %(prog)s --auto --ndays 14
   
   # Use mlx-whisper with large model for best accuracy
   %(prog)s --backend mlx-whisper --model large-v3 --latest
@@ -1105,6 +1248,22 @@ Examples:
         help="Number of speakers in recording (speeds up diarization significantly if known)"
     )
     parser.add_argument(
+        "--ndays",
+        type=int,
+        default=7,
+        help="Number of days back to search for recordings (default: 7). Affects interactive list and --auto mode"
+    )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="Automatic mode: process oldest unprocessed memo from past ndays (for cron jobs). No prompts, no overwrites. Incompatible with --force, --latest, --file"
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force overwrite existing transcripts (use with --latest). Incompatible with --auto"
+    )
+    parser.add_argument(
         "--speaker-confidence-threshold",
         type=float,
         default=config_defaults.get("SPEAKER_CONFIDENCE_THRESHOLD", 0.95),
@@ -1112,6 +1271,16 @@ Examples:
     )
     
     args = parser.parse_args()
+    
+    # Validate argument combinations
+    if args.auto and args.force:
+        parser.error("--auto and --force are incompatible (--auto is designed for unattended operation)")
+    
+    if args.auto and args.latest:
+        parser.error("--auto and --latest are incompatible (use one or the other)")
+    
+    if args.auto and args.file:
+        parser.error("--auto cannot be used with --file (--auto searches for unprocessed memos)")
     
     # Allow config to override summary default
     generate_summary = config_defaults["GENERATE_SUMMARY"] and not args.no_summary
@@ -1124,16 +1293,52 @@ Examples:
         model_size=args.model,
         use_speaker_db=not args.no_speaker_db,
         num_speakers=args.num_speakers,
-        speaker_confidence_threshold=args.speaker_confidence_threshold
+        speaker_confidence_threshold=args.speaker_confidence_threshold,
+        ndays=args.ndays
     )
     
-    # Process
-    transcriber.process_voice_memo(
-        audio_file=args.file,
-        auto_select_latest=args.latest,
-        generate_summary=generate_summary,
-        workspace_path=config_defaults["CURSOR_WORKSPACE_PATH"]
-    )
+    # Handle --auto mode
+    if args.auto:
+        print(f"Auto mode: searching for oldest unprocessed memo from past {args.ndays} days...")
+        audio_file = transcriber.find_oldest_unprocessed_memo()
+        if audio_file is None:
+            print(f"✓ No unprocessed memos found. All recordings from the past {args.ndays} days have been transcribed.")
+            sys.exit(0)
+        
+        print(f"Found unprocessed memo: {audio_file.name}")
+        
+        # Get metadata for display
+        stat = audio_file.stat()
+        mod_time = datetime.fromtimestamp(stat.st_mtime)
+        date_display = mod_time.strftime("%Y-%m-%d %H:%M:%S")
+        duration = transcriber.get_audio_duration(audio_file)
+        duration_str = transcriber._format_duration(duration) if duration else "unknown"
+        print(f"  Date: {date_display}")
+        print(f"  Duration: {duration_str}")
+        
+        # Process with skip_prompt=True for auto mode
+        result = transcriber.process_voice_memo(
+            audio_file=audio_file,
+            auto_select_latest=False,
+            generate_summary=generate_summary,
+            workspace_path=config_defaults["CURSOR_WORKSPACE_PATH"],
+            force_overwrite=False,
+            skip_prompt=True
+        )
+        
+        if result is None:
+            print("Skipped (already processed)")
+            sys.exit(0)
+    else:
+        # Normal mode
+        transcriber.process_voice_memo(
+            audio_file=args.file,
+            auto_select_latest=args.latest,
+            generate_summary=generate_summary,
+            workspace_path=config_defaults["CURSOR_WORKSPACE_PATH"],
+            force_overwrite=args.force,
+            skip_prompt=False
+        )
 
 
 if __name__ == "__main__":

@@ -31,10 +31,13 @@ echo "export CURSOR_API_KEY='your_api_key_here'" >> ~/.zshrc
 
 ## Daily Usage
 
-**Interactive selection (default)** - shows list of last 10 memos:
+**Interactive selection (default)** - shows list of memos from past 7 days (✓ marks already transcribed):
 ```bash
 cd ~/repos/tools/bamfscribe
 python bamfscribe.py
+
+# Or show recordings from past 30 days
+python bamfscribe.py --ndays 30
 ```
 
 After selecting a memo, you'll be prompted for speaker count (optional but speeds up diarization):
@@ -47,8 +50,19 @@ How many speakers? (press Enter to skip): 2
 python bamfscribe.py --latest
 ```
 
+**Automatic mode** - for cron jobs (processes oldest unprocessed memo from past 7 days):
+```bash
+python bamfscribe.py --auto
+
+# Or search past 14 days
+python bamfscribe.py --auto --ndays 14
+```
+
 **Other options:**
 ```bash
+# Force re-process latest even if transcript exists
+python bamfscribe.py --latest --force
+
 # Maximum accuracy with large model
 python bamfscribe.py --backend mlx-whisper --model large-v3 --latest
 
