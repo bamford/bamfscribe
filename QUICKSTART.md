@@ -58,6 +58,8 @@ python bamfscribe.py --auto
 python bamfscribe.py --auto --ndays 14
 ```
 
+**Note**: Auto mode stops without creating a transcript if speakers can't be identified. Run interactively first to add speakers to the database.
+
 **Other options:**
 ```bash
 # Force re-process latest even if transcript exists

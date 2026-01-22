@@ -691,7 +691,8 @@ class VoiceMemoTranscriber:
             print("Continuing without speaker labels...")
             return None
     
-    def merge_transcription_and_diarization(self, transcription, diarization, audio_filename=""):
+    def merge_transcription_and_diarization(self, transcription, diarization, audio_filename="", 
+                                           skip_prompt=False):
         """
         Merge transcription segments with speaker labels from diarization.
         
@@ -699,18 +700,22 @@ class VoiceMemoTranscriber:
             transcription: Whisper transcription result
             diarization: pyannote diarization result (DiarizeOutput or Annotation)
             audio_filename: Name of audio file for speaker database
+            skip_prompt: If True, don't prompt for speaker identification (auto mode)
             
         Returns:
-            List of segments with text and speaker labels
+            Tuple of (segments, all_speakers_identified) where:
+            - segments: List of segments with text and speaker labels
+            - all_speakers_identified: Boolean indicating if all speakers were identified
         """
         if diarization is None:
             # No diarization, just return transcription segments
-            return [{
+            segments = [{
                 "start": seg["start"],
                 "end": seg["end"],
                 "text": seg["text"],
                 "speaker": "Unknown"
             } for seg in transcription["segments"]]
+            return segments, False  # No speakers identified
         
         # Handle DiarizeOutput wrapper (newer pyannote versions)
         # DiarizeOutput has speaker_diarization, exclusive_speaker_diarization, speaker_embeddings
@@ -787,16 +792,27 @@ class VoiceMemoTranscriber:
             if hasattr(self, '_current_audio_file'):
                 self.speaker_db._audio_file_for_playback = self._current_audio_file
             
-            speaker_mapping = self.speaker_db.prompt_for_speaker_names(
-                embeddings,
-                speaker_labels,
-                identified,
-                audio_filename,
-                speaker_quotes,
-                time_tracker=track_interaction_time,
-                audio_segments=speaker_audio_segments,
-                confidence_threshold=self.speaker_confidence_threshold
-            )
+            if skip_prompt:
+                # Auto mode: use identified names only, don't prompt for unknowns
+                speaker_mapping = {}
+                for label in speaker_labels:
+                    if label in identified:
+                        speaker_mapping[label] = identified[label]
+                    else:
+                        # Keep as original label (SPEAKER_00, etc.) - marks as unidentified
+                        speaker_mapping[label] = label
+            else:
+                # Interactive mode: prompt for unknown speakers
+                speaker_mapping = self.speaker_db.prompt_for_speaker_names(
+                    embeddings,
+                    speaker_labels,
+                    identified,
+                    audio_filename,
+                    speaker_quotes,
+                    time_tracker=track_interaction_time,
+                    audio_segments=speaker_audio_segments,
+                    confidence_threshold=self.speaker_confidence_threshold
+                )
         else:
             # No speaker recognition - use original labels
             speaker_mapping = {label: label for label in speaker_labels}
@@ -829,7 +845,17 @@ class VoiceMemoTranscriber:
                 "speaker": speaker
             })
         
-        return merged_segments
+        # Check if all speakers were identified (don't start with "SPEAKER_" and aren't "Unknown")
+        all_speakers_identified = True
+        if speaker_mapping:
+            for label, name in speaker_mapping.items():
+                if name.startswith("SPEAKER_") or name == "Unknown":
+                    all_speakers_identified = False
+                    break
+        else:
+            all_speakers_identified = False
+        
+        return merged_segments, all_speakers_identified
     
     def format_time(self, seconds):
         """Format seconds as SRT timestamp (HH:MM:SS,mmm)."""
@@ -1075,10 +1101,11 @@ class VoiceMemoTranscriber:
         # Store audio file path for speaker identification playback
         self._current_audio_file = audio_file
         
-        segments = self.merge_transcription_and_diarization(
+        segments, all_speakers_identified = self.merge_transcription_and_diarization(
             transcription, 
             diarization, 
-            audio_filename=base_name
+            audio_filename=base_name,
+            skip_prompt=skip_prompt
         )
         
         # Subtract user interaction time from merge timing
@@ -1087,6 +1114,17 @@ class VoiceMemoTranscriber:
             merge_time -= self._user_interaction_time
         timings['merge'] = merge_time
         print(f"✓ Merge completed in {timings['merge']:.1f}s")
+        
+        # In auto mode, stop if not all speakers were identified
+        if skip_prompt and not all_speakers_identified:
+            print("\n" + "="*60)
+            print("⚠️  AUTO MODE: STOPPING")
+            print("="*60)
+            print("Not all speakers could be identified with confidence.")
+            print("Manual review and speaker identification required.")
+            print(f"\nAudio file: {audio_file}")
+            print("Run without --auto to identify speakers interactively.")
+            return None
         
         # Save outputs
         print("\n" + "="*60)
@@ -1256,7 +1294,7 @@ Examples:
     parser.add_argument(
         "--auto",
         action="store_true",
-        help="Automatic mode: process oldest unprocessed memo from past ndays (for cron jobs). No prompts, no overwrites. Incompatible with --force, --latest, --file"
+        help="Automatic mode: process oldest unprocessed memo from past ndays (for cron jobs). No prompts, no overwrites. Stops without creating transcript if speakers can't be identified. Incompatible with --force, --latest, --file"
     )
     parser.add_argument(
         "--force",

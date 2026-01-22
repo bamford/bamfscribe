@@ -197,11 +197,14 @@ Finds the oldest voice memo from the past 7 days (by default) that hasn't been t
 - Exits silently if all recordings are already transcribed
 - Never overwrites existing transcripts
 - No user interaction required (skips all prompts including speaker count)
+- **Stops without creating transcript if speakers cannot be identified** - requires manual review
 
 To search further back, use `--ndays`:
 ```bash
 python bamfscribe.py --auto --ndays 14  # Process from past 2 weeks
 ```
+
+**Important**: In auto mode, if speakers cannot be identified from the speaker database with confidence, processing stops without creating a transcript. This prevents creating transcripts with generic "SPEAKER_00" labels. You'll need to run the tool interactively to identify new speakers and add them to the database.
 
 Example cron job (process every hour):
 ```bash
